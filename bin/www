@@ -57,8 +57,17 @@ wss.on('connection', ws => {
 			switch (message.type) {
 				case 'create_beads_room':
 					const roomId = generateRoomId()
+					const playerName = message.playerName || '匿名用戶'
+
 					beadsRooms.set(roomId, {
 						clients: new Set([ws]),
+						members: [
+							{
+								id: Date.now(),
+								name: playerName,
+								isCaptain: true,
+							},
+						],
 						gameState: {
 							team: [],
 							rounds: [],
@@ -71,22 +80,52 @@ wss.on('connection', ws => {
 					})
 					ws.roomId = roomId
 					ws.isCaptain = true
+					ws.playerName = playerName
+					ws.id = Date.now()
+
+					const room = beadsRooms.get(roomId)
 					ws.send(
 						JSON.stringify({
 							type: 'beads_room_created',
 							roomId: roomId,
 							isCaptain: true,
+							roomMembers: room.members,
 						}),
 					)
 					break
 
 				case 'join_beads_room':
-					const { roomId: joinRoomId } = message
+					const { roomId: joinRoomId, playerName: joinPlayerName } = message
 					if (beadsRooms.has(joinRoomId)) {
 						const room = beadsRooms.get(joinRoomId)
+						const newPlayerName = joinPlayerName || '匿名用戶'
+
+						// 檢查名稱是否重複
+						const nameExists = room.members.some(
+							member => member.name === newPlayerName,
+						)
+						if (nameExists) {
+							ws.send(
+								JSON.stringify({
+									type: 'error',
+									message: '此名稱已被使用，請選擇其他名稱',
+								}),
+							)
+							break
+						}
+
 						room.clients.add(ws)
 						ws.roomId = joinRoomId
 						ws.isCaptain = false
+						ws.playerName = newPlayerName
+						ws.id = Date.now()
+
+						// 添加到房間成員列表
+						room.members.push({
+							id: ws.id,
+							name: newPlayerName,
+							isCaptain: false,
+						})
 
 						// 發送當前遊戲狀態給新加入的用戶
 						ws.send(
@@ -95,16 +134,23 @@ wss.on('connection', ws => {
 								roomId: joinRoomId,
 								gameState: room.gameState,
 								isCaptain: false,
+								roomMembers: room.members,
 							}),
 						)
 
-						// 通知房間內其他用戶有新人加入
+						// 通知房間內其他用戶有新人加入，並更新成員列表
 						room.clients.forEach(client => {
 							if (client !== ws && client.readyState === WebSocket.OPEN) {
 								client.send(
 									JSON.stringify({
 										type: 'user_joined_beads',
-										message: '有新隊員加入了房間',
+										playerName: newPlayerName,
+									}),
+								)
+								client.send(
+									JSON.stringify({
+										type: 'room_members_updated',
+										roomMembers: room.members,
 									}),
 								)
 							}
@@ -152,6 +198,9 @@ wss.on('connection', ws => {
 			const room = beadsRooms.get(ws.roomId)
 			room.clients.delete(ws)
 
+			// 從成員列表中移除
+			room.members = room.members.filter(member => member.id !== ws.id)
+
 			// 如果房間沒有用戶了，刪除房間
 			if (room.clients.size === 0) {
 				beadsRooms.delete(ws.roomId)
@@ -163,6 +212,14 @@ wss.on('connection', ws => {
 					newCaptain.isCaptain = true
 					room.captain = newCaptain
 
+					// 更新成員列表中的隊長狀態
+					const newCaptainMember = room.members.find(
+						member => member.id === newCaptain.id,
+					)
+					if (newCaptainMember) {
+						newCaptainMember.isCaptain = true
+					}
+
 					// 通知新隊長
 					newCaptain.send(
 						JSON.stringify({
@@ -172,13 +229,19 @@ wss.on('connection', ws => {
 					)
 				}
 
-				// 通知其他用戶有人離開
+				// 通知其他用戶有人離開，並更新成員列表
 				room.clients.forEach(client => {
 					if (client.readyState === WebSocket.OPEN) {
 						client.send(
 							JSON.stringify({
 								type: 'user_left_beads',
-								message: ws.isCaptain ? '隊長離開了房間' : '有隊員離開了房間',
+								playerName: ws.playerName || '匿名用戶',
+							}),
+						)
+						client.send(
+							JSON.stringify({
+								type: 'room_members_updated',
+								roomMembers: room.members,
 							}),
 						)
 					}

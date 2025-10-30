@@ -2,40 +2,117 @@ extends layout
 
 block content
   .container-fluid
-    h1.text-center.mb-4 珠子分配系統
-    
     #app
       // 房間管理區域
-      .row.mb-4(v-if="!currentRoomId")
-        .col-12
-          .card
-            .card-header.bg-primary.text-white.text-center
-              h5.mb-0 房間管理
-            .card-body.text-center
-              .row
+      .row.justify-content-center.mb-4(v-if="!currentRoomId")
+        .col-lg-8.col-xl-6
+          .card.shadow-lg.border-0
+            .card-header.bg-gradient-primary.text-primary.text-center.py-4
+              h4.mb-0
+                i.fas.fa-gem.me-2.text-primary
+                | 珠子分配系統
+              p.mb-0.text-primary 多人即時協作的珠子分配管理工具
+            
+            .card-body.p-4
+              // 名稱輸入區域
+              .mb-4
+                label.form-label.fw-bold
+                  i.fas.fa-user.me-2.text-primary
+                  | 請輸入你的遊戲名稱
+                .input-group
+                  span.input-group-text
+                    i.fas.fa-id-card
+                  input.form-control.form-control-lg(v-model="playerName" type="text" placeholder="輸入你的遊戲名稱" maxlength="20" required)
+              
+              .row.g-3
                 .col-md-6
-                  button.btn.btn-success.btn-lg.w-100.mb-2(@click="createRoom") 創建房間 (隊長)
+                  .card.border-success.h-100
+                    .card-body.text-center.p-4
+                      .mb-3
+                        .bg-success.bg-opacity-10.rounded-circle.d-inline-flex.align-items-center.justify-content-center(style="width: 60px; height: 60px;")
+                          i.fas.fa-crown.text-success.fa-2x
+                      h5.text-success 創建新房間
+                      p.text-muted.small 成為隊長，管理珠子分配
+                      button.btn.btn-success.btn-lg.w-100(:disabled="!playerName.trim()" @click="createRoom")
+                        i.fas.fa-plus.me-2
+                        | 創建房間
+                
                 .col-md-6
-                  .input-group.mb-2
-                    input.form-control(v-model="joinRoomId" type="text" placeholder="輸入房間序號" maxlength="8")
-                    .input-group-append
-                      button.btn.btn-primary(@click="joinRoom") 加入房間 (隊員)
+                  .card.border-primary.h-100
+                    .card-body.text-center.p-4
+                      .mb-3
+                        .bg-primary.bg-opacity-10.rounded-circle.d-inline-flex.align-items-center.justify-content-center(style="width: 60px; height: 60px;")
+                          i.fas.fa-users.text-primary.fa-2x
+                      h5.text-primary 加入現有房間
+                      p.text-muted.small 輸入房間序號加入遊戲
+                      .input-group.mb-3
+                        span.input-group-text
+                          i.fas.fa-key
+                        input.form-control.form-control-lg.text-center.fw-bold(v-model="joinRoomId" type="text" placeholder="房間序號" maxlength="8" style="letter-spacing: 2px;")
+                      button.btn.btn-primary.btn-lg.w-100(:disabled="!playerName.trim() || !joinRoomId.trim()" @click="joinRoom")
+                        i.fas.fa-sign-in-alt.me-2
+                        | 加入房間
 
       // 房間資訊
-      .alert.alert-info(v-if="currentRoomId")
-        .row.align-items-center
-          .col-md-8
-            strong 房間序號: {{ currentRoomId }}
-            span.badge.badge-success.ml-2(v-if="isCaptain") 隊長
-            span.badge.badge-info.ml-2(v-else) 隊員
-            span.text-muted.ml-2 | 線上人數: {{ onlineUsers }}
-          .col-md-4.text-right
-            button.btn.btn-sm.btn-outline-secondary.mr-2(@click="copyRoomId") 複製房間號
-            button.btn.btn-sm.btn-danger(@click="leaveRoom") 離開房間
+      .card.mb-4(v-if="currentRoomId")
+        .card-header.bg-primary.text-white
+          .row.align-items-center
+            .col-md-8
+              .d-flex.align-items-center.flex-wrap
+                i.fas.fa-home.me-2.text-white
+                strong.me-3.text-white 房間序號: {{ currentRoomId }}
+                .d-flex.align-items-center
+                  i.fas.fa-user.me-1.text-white
+                  span.me-2.text-white {{ playerName }}
+                  span.badge(:class="isCaptain ? 'bg-warning text-dark' : 'bg-light text-dark'")
+                    i.fas.fa-crown.me-1(v-if="isCaptain")
+                    i.fas.fa-user.me-1(v-else)
+                    | {{ isCaptain ? '隊長' : '隊員' }}
+            .col-md-4.text-end
+              button.btn.btn-light.btn-sm.me-2(@click="copyRoomId")
+                i.fas.fa-copy.me-1
+                | 複製房間號
+              button.btn.btn-danger.btn-sm(@click="leaveRoom")
+                i.fas.fa-sign-out-alt.me-1
+                | 離開房間
+        
+        .card-body
+          .row
+            .col-md-12
+              h6.mb-3
+                i.fas.fa-users.me-2.text-primary
+                | 房間成員 ({{ roomMembers.length }} 人)
+              
+              .row.g-2
+                .col-6.col-md-4.col-lg-3.col-xl-2(v-for="member in roomMembers" :key="member.id")
+                  .card.border.shadow-sm.h-100(:class="member.isCaptain ? 'border-warning bg-warning bg-opacity-10' : 'border-primary bg-light'")
+                    .card-body.text-center.p-3
+                      .avatar.mb-2
+                        .rounded-circle.d-inline-flex.align-items-center.justify-content-center(:class="member.isCaptain ? 'bg-warning text-dark' : 'bg-primary text-white'" style="width: 40px; height: 40px;")
+                          i.fas.fa-crown(v-if="member.isCaptain")
+                          i.fas.fa-user(v-else)
+                      .small.fw-bold.text-dark.text-truncate(style="min-height: 1.2em;") {{ member.name }}
+                      .badge.mt-1(:class="member.isCaptain ? 'bg-warning text-dark' : 'bg-primary text-white'") {{ member.isCaptain ? '隊長' : '隊員' }}
+              
+              .text-center.text-muted.py-4(v-if="roomMembers.length === 0")
+                i.fas.fa-users.fa-2x.mb-2.d-block.opacity-50
+                | 房間內暫無成員
 
-      // 狀態訊息
-      .alert(:class="'alert-' + statusType" v-if="statusMessage")
-        | {{ statusMessage }}
+      // Toast 通知容器
+      .toast-container.position-fixed.bottom-0.end-0.p-3(style="z-index: 1055;")
+        .toast.fade.show(
+          v-for="(toast, index) in toasts" 
+          :key="toast.id"
+          :class="getToastClass(toast.type)"
+          role="alert"
+        )
+          .toast-header
+            .rounded.me-2(:class="getToastIconBg(toast.type)" style="width: 20px; height: 20px;")
+              i.fas(:class="getToastIcon(toast.type)" style="font-size: 10px;")
+            strong.me-auto {{ getToastTitle(toast.type) }}
+            small {{ toast.time }}
+            button.btn-close(@click="removeToast(index)" type="button")
+          .toast-body {{ toast.message }}
       .row.g-3
         // 1. 預設人員名單
         .col-lg-2.col-md-3.col-sm-6(v-if="currentRoomId")
@@ -141,10 +218,11 @@ block content
         const ws = ref(null);
         const currentRoomId = ref('');
         const joinRoomId = ref('');
+        const playerName = ref('');
         const isCaptain = ref(false);
-        const onlineUsers = ref(0);
-        const statusMessage = ref('');
-        const statusType = ref('info');
+        const roomMembers = ref([]);
+        const toasts = ref([]);
+        let toastId = 0;
 
         const availablePlayers = ref([
           { name: '86' },
@@ -208,34 +286,37 @@ block content
             case 'beads_room_created':
               currentRoomId.value = data.roomId;
               isCaptain.value = data.isCaptain;
-              onlineUsers.value = 1;
-              showStatus(`房間已創建，序號: ${data.roomId}`, 'success');
+              roomMembers.value = data.roomMembers || [];
+              showNotification(`房間已創建，序號: ${data.roomId}`, 'success', true);
               break;
               
             case 'beads_room_joined':
               currentRoomId.value = data.roomId;
               isCaptain.value = data.isCaptain;
+              roomMembers.value = data.roomMembers || [];
               loadGameState(data.gameState);
-              showStatus(`已加入房間: ${data.roomId}`, 'success');
+              showNotification(`已加入房間: ${data.roomId}`, 'success', true);
               break;
               
             case 'game_state_updated':
               loadGameState(data.gameState);
               break;
               
+            case 'room_members_updated':
+              roomMembers.value = data.roomMembers || [];
+              break;
+              
             case 'user_joined_beads':
-              onlineUsers.value++;
-              showStatus(data.message, 'info');
+              showNotification(`${data.playerName} 加入了房間`, 'info', true);
               break;
               
             case 'user_left_beads':
-              onlineUsers.value--;
-              showStatus(data.message, 'warning');
+              showNotification(`${data.playerName} 離開了房間`, 'warning', true);
               break;
               
             case 'promoted_to_captain':
               isCaptain.value = true;
-              showStatus(data.message, 'success');
+              showNotification(data.message, 'success', true);
               break;
               
             case 'error':
@@ -271,22 +352,121 @@ block content
           }
         }
 
-        // 顯示狀態訊息
-        function showStatus(message, type) {
-          statusMessage.value = message;
-          statusType.value = type;
+        // 通知系統
+        function showNotification(message, type = 'info', useNativeNotification = false) {
+          // 如果是重要通知且支援原生通知，使用原生通知
+          if (useNativeNotification && 'Notification' in window) {
+            if (Notification.permission === 'granted') {
+              new Notification('珠子分配系統', {
+                body: message,
+                icon: '/favicon.ico',
+                tag: 'beads-notification'
+              });
+            } else if (Notification.permission !== 'denied') {
+              Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                  new Notification('珠子分配系統', {
+                    body: message,
+                    icon: '/favicon.ico',
+                    tag: 'beads-notification'
+                  });
+                }
+              });
+            }
+          }
+          
+          // 同時顯示 Toast 通知
+          showToast(message, type);
+        }
+
+        function showToast(message, type = 'info') {
+          const toast = {
+            id: ++toastId,
+            message: message,
+            type: type,
+            time: new Date().toLocaleTimeString('zh-TW', { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            })
+          };
+          
+          toasts.value.push(toast);
+          
+          // 自動移除 Toast (成功和資訊 3秒，警告 5秒，錯誤 7秒)
+          const duration = type === 'danger' ? 7000 : type === 'warning' ? 5000 : 3000;
           setTimeout(() => {
-            statusMessage.value = '';
-          }, 3000);
+            removeToast(toasts.value.findIndex(t => t.id === toast.id));
+          }, duration);
+        }
+
+        function removeToast(index) {
+          if (index >= 0 && index < toasts.value.length) {
+            toasts.value.splice(index, 1);
+          }
+        }
+
+        // Toast 樣式函數
+        function getToastClass(type) {
+          const classes = {
+            success: 'border-success',
+            danger: 'border-danger',
+            warning: 'border-warning',
+            info: 'border-info'
+          };
+          return classes[type] || classes.info;
+        }
+
+        function getToastIconBg(type) {
+          const classes = {
+            success: 'bg-success',
+            danger: 'bg-danger',
+            warning: 'bg-warning',
+            info: 'bg-info'
+          };
+          return classes[type] || classes.info;
+        }
+
+        function getToastIcon(type) {
+          const icons = {
+            success: 'fa-check text-white',
+            danger: 'fa-exclamation-triangle text-white',
+            warning: 'fa-exclamation-circle text-white',
+            info: 'fa-info-circle text-white'
+          };
+          return icons[type] || icons.info;
+        }
+
+        function getToastTitle(type) {
+          const titles = {
+            success: '成功',
+            danger: '錯誤',
+            warning: '警告',
+            info: '資訊'
+          };
+          return titles[type] || titles.info;
+        }
+
+        // 為了向後兼容，保留 showStatus 函數
+        function showStatus(message, type) {
+          showNotification(message, type);
         }
 
         // 房間管理功能
         async function createRoom() {
+          const name = playerName.value.trim();
+          if (!name) {
+            showStatus('請輸入你的遊戲名稱', 'warning');
+            return;
+          }
+          
           try {
             if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
               await initWebSocket();
             }
-            ws.value.send(JSON.stringify({ type: 'create_beads_room' }));
+            ws.value.send(JSON.stringify({ 
+              type: 'create_beads_room',
+              playerName: name
+            }));
           } catch (error) {
             console.error('創建房間失敗:', error);
             showStatus('創建房間失敗', 'danger');
@@ -295,18 +475,30 @@ block content
 
         async function joinRoom() {
           const roomId = joinRoomId.value.trim().toUpperCase();
-          if (roomId) {
-            try {
-              if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
-                await initWebSocket();
-              }
-              ws.value.send(JSON.stringify({ type: 'join_beads_room', roomId: roomId }));
-            } catch (error) {
-              console.error('加入房間失敗:', error);
-              showStatus('加入房間失敗', 'danger');
-            }
-          } else {
+          const name = playerName.value.trim();
+          
+          if (!name) {
+            showStatus('請輸入你的遊戲名稱', 'warning');
+            return;
+          }
+          
+          if (!roomId) {
             showStatus('請輸入房間序號', 'warning');
+            return;
+          }
+          
+          try {
+            if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+              await initWebSocket();
+            }
+            ws.value.send(JSON.stringify({ 
+              type: 'join_beads_room', 
+              roomId: roomId,
+              playerName: name
+            }));
+          } catch (error) {
+            console.error('加入房間失敗:', error);
+            showStatus('加入房間失敗', 'danger');
           }
         }
 
@@ -316,7 +508,7 @@ block content
           }
           currentRoomId.value = '';
           isCaptain.value = false;
-          onlineUsers.value = 0;
+          roomMembers.value = [];
           // 重置遊戲狀態
           team.value = [];
           rounds.value = [];
@@ -329,40 +521,10 @@ block content
 
         function copyRoomId() {
           navigator.clipboard.writeText(currentRoomId.value).then(() => {
-            // 使用瀏覽器原生 notification
-            if ('Notification' in window) {
-              // 檢查通知權限
-              if (Notification.permission === 'granted') {
-                new Notification('珠子分配系統', {
-                  body: `房間序號 ${currentRoomId.value} 已複製到剪貼板`,
-                  icon: '/favicon.ico', // 可以使用你的 icon
-                  tag: 'copy-room-id'
-                });
-              } else if (Notification.permission !== 'denied') {
-                // 請求通知權限
-                Notification.requestPermission().then(permission => {
-                  if (permission === 'granted') {
-                    new Notification('珠子分配系統', {
-                      body: `房間序號 ${currentRoomId.value} 已複製到剪貼板`,
-                      icon: '/favicon.ico',
-                      tag: 'copy-room-id'
-                    });
-                  } else {
-                    // 如果用戶拒絕通知權限，回退到原來的方式
-                    showStatus('房間序號已複製到剪貼板', 'success');
-                  }
-                });
-              } else {
-                // 用戶已拒絕通知權限，使用原來的方式
-                showStatus('房間序號已複製到剪貼板', 'success');
-              }
-            } else {
-              // 瀏覽器不支援通知，使用原來的方式
-              showStatus('房間序號已複製到剪貼板', 'success');
-            }
+            showNotification(`房間序號 ${currentRoomId.value} 已複製到剪貼板`, 'success', true);
           }).catch(err => {
             console.error('複製失敗:', err);
-            showStatus('複製失敗，請手動複製房間序號', 'danger');
+            showNotification('複製失敗，請手動複製房間序號', 'danger');
           });
         }
 
@@ -609,14 +771,23 @@ block content
           // WebSocket 和房間管理
           currentRoomId,
           joinRoomId,
+          playerName,
           isCaptain,
-          onlineUsers,
-          statusMessage,
-          statusType,
+          roomMembers,
+          toasts,
           createRoom,
           joinRoom,
           leaveRoom,
           copyRoomId,
+          
+          // 通知系統
+          showNotification,
+          showToast,
+          removeToast,
+          getToastClass,
+          getToastIconBg,
+          getToastIcon,
+          getToastTitle,
           
           // 遊戲數據
           availablePlayers,
