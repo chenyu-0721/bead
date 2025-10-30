@@ -52,6 +52,12 @@ block content
                       button.btn.btn-primary.btn-lg.w-100(:disabled="!playerName.trim() || !joinRoomId.trim()" @click="joinRoom")
                         i.fas.fa-sign-in-alt.me-2
                         | 加入房間
+            
+            // Footer 製作人資訊
+            .card-footer.bg-light.text-center.py-3
+              .small.text-muted
+                i.fas.fa-code.me-1
+                | 製作人：娜歐--小不點寶寶
 
       // 房間資訊
       .card.mb-4(v-if="currentRoomId")
