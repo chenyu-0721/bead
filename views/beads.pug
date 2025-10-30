@@ -716,31 +716,33 @@ block content
                 }
                 randomBeads.value = beadCount;
               } else {
-                for (let i = 0; i < beadCount; i++) {
-                  const player = baseOrder[i];
-                  const sale = salesConfig.value.find(s => s.from === player.name);
-                  if (sale && sale.to) {
-                    const buyer = team.value.find(p => p.name === sale.to);
-                    if (buyer) {
-                      buyer.beads++;
-                      let s = sales.value.find(
-                        x => x.from === player.name && x.to === buyer.name,
-                      );
-                      if (!s)
-                        sales.value.push({
-                          from: player.name,
-                          to: buyer.name,
-                          count: 1,
-                        });
-                      else s.count++;
-                      result.push({ name: buyer.name, note: `${player.name}賣` });
-                    }
-                  } else {
-                    player.beads++;
-                    result.push({ name: player.name, note: '' });
-                  }
+            let currentIdx = idx;
+            while (remaining > 0) {
+              const player = team.value[currentIdx];
+              remaining--;
+
+              const sale = salesConfig.value.find(s => s.from === player.name);
+              if (sale && sale.to) {
+                const buyer = team.value.find(p => p.name === sale.to);
+                if (buyer) {
+                  buyer.beads++;
+                  let s = sales.value.find(x => x.from === player.name && x.to === buyer.name);
+                  if (!s) sales.value.push({ from: player.name, to: buyer.name, count: 1 });
+                  else s.count++;
+                  result.push({ name: buyer.name, note: `${player.name}賣` });
+                } else {
+                  player.beads++;
+                  result.push({ name: player.name, note: '' });
                 }
+              } else {
+                player.beads++;
+                result.push({ name: player.name, note: '' });
               }
+              
+              currentIdx = (currentIdx + 1) % n;
+            }
+            lastIndex.value = (idx + beadCount - 1) % n;
+          }
             } else {
               for (let i = 0; i < peopleUntilFirstPerson; i++) {
                 const player = baseOrder[i];
@@ -775,9 +777,9 @@ block content
 
             lastIndex.value = 0;
           } else {
+            let currentIdx = idx;
             while (remaining > 0) {
-              const player = baseOrder[0];
-              baseOrder.push(baseOrder.shift());
+              const player = team.value[currentIdx];
               remaining--;
 
               const sale = salesConfig.value.find(s => s.from === player.name);
@@ -797,8 +799,10 @@ block content
                 player.beads++;
                 result.push({ name: player.name, note: '' });
               }
+              
+              lastIndex.value = currentIdx;
+              currentIdx = (currentIdx + 1) % n;
             }
-            lastIndex.value = (idx + beadCount - 1) % n;
           }
 
           rounds.value.push({ beads: beadCount, distribution: result, isFinal });
