@@ -76,27 +76,39 @@ block content
                 i.fas.fa-sign-out-alt.me-1
                 | 離開房間
         
-        .card-body
-          .row
-            .col-md-12
-              h6.mb-3
-                i.fas.fa-users.me-2.text-primary
-                | 房間成員 ({{ roomMembers.length }} 人)
-              
-              .row.g-2
-                .col-6.col-md-4.col-lg-3.col-xl-2(v-for="member in roomMembers" :key="member.id")
+        .card-body.p-0
+          // 房間成員抽屜標題
+          .d-flex.align-items-center.justify-content-between.p-3.border-bottom.bg-light.cursor-pointer(@click="toggleMembersDrawer")
+            .d-flex.align-items-center
+              i.fas.fa-users.me-2.text-primary
+              h6.mb-0 房間成員 ({{ roomMembers.length }} 人)
+            .d-flex.align-items-center
+              // 成員頭像預覽（收起時顯示）
+              .d-flex.me-2(v-if="!showMembersDrawer && roomMembers.length > 0")
+                .position-relative(v-for="(member, index) in roomMembers.slice(0, 5)" :key="member.id" :style="{ marginLeft: index > 0 ? '-8px' : '0', zIndex: 5 - index }")
+                  .rounded-circle.border.border-2.border-white.d-inline-flex.align-items-center.justify-content-center(:class="member.isCaptain ? 'bg-warning text-dark' : 'bg-primary text-white'" style="width: 24px; height: 24px; font-size: 10px;")
+                    i.fas.fa-crown(v-if="member.isCaptain")
+                    i.fas.fa-user(v-else)
+                .badge.bg-secondary.text-white.rounded-pill.ms-1(v-if="roomMembers.length > 5" style="font-size: 10px;") +{{ roomMembers.length - 5 }}
+              i.fas(:class="showMembersDrawer ? 'fa-chevron-up' : 'fa-chevron-down'").text-muted
+          
+          // 房間成員內容（可展開收起）
+          .collapse(:class="{ show: showMembersDrawer }")
+            .p-3
+              .row.g-2(v-if="roomMembers.length > 0")
+                .col(v-for="member in roomMembers" :key="member.id" style="flex: 0 0 12.5%; max-width: 12.5%;")
                   .card.border.shadow-sm.h-100(:class="member.isCaptain ? 'border-warning bg-warning bg-opacity-10' : 'border-primary bg-light'")
-                    .card-body.text-center.p-3
-                      .avatar.mb-2
-                        .rounded-circle.d-inline-flex.align-items-center.justify-content-center(:class="member.isCaptain ? 'bg-warning text-dark' : 'bg-primary text-white'" style="width: 40px; height: 40px;")
+                    .card-body.text-center.p-2
+                      .avatar.mb-1
+                        .rounded-circle.d-inline-flex.align-items-center.justify-content-center(:class="member.isCaptain ? 'bg-warning text-dark' : 'bg-primary text-white'" style="width: 32px; height: 32px; font-size: 12px;")
                           i.fas.fa-crown(v-if="member.isCaptain")
                           i.fas.fa-user(v-else)
-                      .small.fw-bold.text-dark.text-truncate(style="min-height: 1.2em;") {{ member.name }}
-                      .badge.mt-1(:class="member.isCaptain ? 'bg-warning text-dark' : 'bg-primary text-white'") {{ member.isCaptain ? '隊長' : '隊員' }}
+                      .small.fw-bold.text-dark.text-truncate(style="min-height: 1em; font-size: 11px;") {{ member.name }}
+                      .badge.mt-1(:class="member.isCaptain ? 'bg-warning text-dark' : 'bg-primary text-white'" style="font-size: 9px;") {{ member.isCaptain ? '隊長' : '隊員' }}
               
-              .text-center.text-muted.py-4(v-if="roomMembers.length === 0")
-                i.fas.fa-users.fa-2x.mb-2.d-block.opacity-50
-                | 房間內暫無成員
+              .text-center.text-muted.py-3(v-if="roomMembers.length === 0")
+                i.fas.fa-users.fa-lg.mb-2.d-block.opacity-50
+                small 房間內暫無成員
 
       // Toast 通知容器
       .toast-container.position-fixed.bottom-0.end-0.p-3(style="z-index: 1055;")
@@ -208,6 +220,34 @@ block content
                 li(v-for="s in sales" :key="s.from + s.to")
                   | {{ s.from }} → {{ s.to }} {{ s.count }} 組
 
+  style.
+    .cursor-pointer {
+      cursor: pointer;
+    }
+    
+    .cursor-pointer:hover {
+      background-color: rgba(0, 0, 0, 0.05) !important;
+    }
+    
+    .collapse {
+      transition: height 0.35s ease;
+    }
+    
+    /* 成員卡片響應式調整 */
+    @media (max-width: 768px) {
+      .col[style*="12.5%"] {
+        flex: 0 0 25% !important;
+        max-width: 25% !important;
+      }
+    }
+    
+    @media (max-width: 576px) {
+      .col[style*="12.5%"] {
+        flex: 0 0 50% !important;
+        max-width: 50% !important;
+      }
+    }
+
   script(src="https://unpkg.com/vue@3/dist/vue.global.js")
   script.
     const { createApp, ref, computed } = Vue;
@@ -222,6 +262,7 @@ block content
         const isCaptain = ref(false);
         const roomMembers = ref([]);
         const toasts = ref([]);
+        const showMembersDrawer = ref(false);
         let toastId = 0;
 
         const availablePlayers = ref([
@@ -528,6 +569,11 @@ block content
           });
         }
 
+        // 切換成員抽屜
+        function toggleMembersDrawer() {
+          showMembersDrawer.value = !showMembersDrawer.value;
+        }
+
         function addToTeam(name) {
           if (!isCaptain.value) return;
           if (!name) return;
@@ -774,11 +820,13 @@ block content
           playerName,
           isCaptain,
           roomMembers,
+          showMembersDrawer,
           toasts,
           createRoom,
           joinRoom,
           leaveRoom,
           copyRoomId,
+          toggleMembersDrawer,
           
           // 通知系統
           showNotification,
