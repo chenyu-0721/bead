@@ -1,0 +1,646 @@
+extends layout
+
+block content
+  .container-fluid
+    h1.text-center.mb-4 珠子分配系統
+    
+    #app
+      // 房間管理區域
+      .row.mb-4(v-if="!currentRoomId")
+        .col-12
+          .card
+            .card-header.bg-primary.text-white.text-center
+              h5.mb-0 房間管理
+            .card-body.text-center
+              .row
+                .col-md-6
+                  button.btn.btn-success.btn-lg.w-100.mb-2(@click="createRoom") 創建房間 (隊長)
+                .col-md-6
+                  .input-group.mb-2
+                    input.form-control(v-model="joinRoomId" type="text" placeholder="輸入房間序號" maxlength="8")
+                    .input-group-append
+                      button.btn.btn-primary(@click="joinRoom") 加入房間 (隊員)
+
+      // 房間資訊
+      .alert.alert-info(v-if="currentRoomId")
+        .row.align-items-center
+          .col-md-8
+            strong 房間序號: {{ currentRoomId }}
+            span.badge.badge-success.ml-2(v-if="isCaptain") 隊長
+            span.badge.badge-info.ml-2(v-else) 隊員
+            span.text-muted.ml-2 | 線上人數: {{ onlineUsers }}
+          .col-md-4.text-right
+            button.btn.btn-sm.btn-outline-secondary.mr-2(@click="copyRoomId") 複製房間號
+            button.btn.btn-sm.btn-danger(@click="leaveRoom") 離開房間
+
+      // 狀態訊息
+      .alert(:class="'alert-' + statusType" v-if="statusMessage")
+        | {{ statusMessage }}
+      .row.g-3
+        // 1. 預設人員名單
+        .col-lg-2.col-md-3.col-sm-6(v-if="currentRoomId")
+          .card.h-100
+            .card-header.bg-primary.text-white.text-center
+              h5.mb-0 預設人員名單
+              small.d-block(v-if="!isCaptain") (僅隊長可操作)
+            .card-body.d-flex.flex-column
+              .mb-2(v-for="p in availablePlayers" :key="p.name")
+                button.btn.btn-outline-secondary.btn-sm.w-100(:disabled="!isCaptain" @click="addToTeam(p.name)")
+                  | {{ p.name }}
+              .mt-auto
+                .input-group.input-group-sm.mb-2
+                  input.form-control(v-model="newPlayer" type="text" placeholder="手動加入隊伍" :disabled="!isCaptain")
+                button.btn.btn-success.btn-sm.w-100(:disabled="!isCaptain" @click="addToTeam(newPlayer)") 加入隊伍
+
+        // 2. 隊伍欄位
+        .col-lg-2.col-md-3.col-sm-6(v-if="currentRoomId")
+          .card.h-100
+            .card-header.bg-info.text-white.text-center
+              h5.mb-0 隊伍欄位 (最多8人)
+              small.d-block(v-if="!isCaptain") (僅隊長可操作)
+            .card-body
+              .mb-2(v-for="p in team" :key="p.name")
+                .d-flex.justify-content-between.align-items-center.p-2.bg-light.rounded
+                  span {{ p.name }}
+                  button.btn.btn-danger.btn-sm(:disabled="!isCaptain" @click="removeFromTeam(p.name)") ×
+              p.text-muted.text-center.small(v-if="team.length === 0") 點擊左側人員加入隊伍或手動輸入
+
+        // 3. 販賣設定
+        .col-lg-2.col-md-3.col-sm-6(v-if="currentRoomId")
+          .card.h-100
+            .card-header.bg-warning.text-dark.text-center
+              h5.mb-0 販賣設定
+              small.d-block(v-if="!isCaptain") (僅隊長可操作)
+            .card-body
+              .mb-2(v-for="(sale, index) in salesConfig" :key="index")
+                .d-flex.align-items-center.mb-1
+                  select.form-select.form-select-sm.me-1(v-model="sale.from" :disabled="!isCaptain")
+                    option(disabled value="") 賣方
+                    option(v-for="p in team" :key="p.name" :disabled="isSellerUsed(p.name, index)") {{ p.name }}
+                  span.mx-1 →
+                  select.form-select.form-select-sm.me-1(v-model="sale.to" :disabled="!isCaptain")
+                    option(disabled value="") 買方
+                    option(v-for="p in team" :key="p.name + 'buy'" :disabled="p.name === sale.from") {{ p.name }}
+                  button.btn.btn-danger.btn-sm(:disabled="!isCaptain" @click="removeSale(index)") ×
+              button.btn.btn-success.btn-sm.w-100(:disabled="!isCaptain" @click="addSale") 新增販賣
+
+        // 4. 分配珠子
+        .col-lg-2.col-md-3.col-sm-6(v-if="currentRoomId")
+          .card.h-100
+            .card-header.bg-secondary.text-white.text-center
+              h5.mb-0 分配珠子
+              small.d-block(v-if="!isCaptain") (僅隊長可操作)
+            .card-body.d-flex.flex-column
+              input.form-control.form-control-sm.mb-2(v-model.number="roundBeads" type="number" placeholder="輸入珠子數量" :disabled="!isCaptain")
+              button.btn.btn-primary.btn-sm.w-100.mb-2(:disabled="!isCaptain" @click="distributeBeads") 分配珠子
+              button.btn.btn-warning.btn-sm.w-100.mb-2(:disabled="!isCaptain" @click="finalDistribute") 最後一回合
+              button.btn.btn-secondary.btn-sm.w-100.mb-2(:disabled="!isCaptain" @click="undoLastRound") 返回上一步
+              button.btn.btn-success.btn-sm.w-100.mt-auto(v-if="hasFinalRound" @click="downloadReport")
+                i.fas.fa-download.me-1
+                | 下載紀錄
+
+        // 5. 回合紀錄
+        .col-lg-2.col-md-6.col-12(v-if="currentRoomId")
+          .card.h-100
+            .card-header.bg-dark.text-white.text-center
+              h5.mb-0 回合紀錄
+            .card-body(style="max-height: 500px; overflow-y: auto;")
+              .mb-3(v-for="(round, i) in reversedRounds" :key="i")
+                .fw-bold.text-primary.mb-1
+                  | === 回合 {{ rounds.length - i }} 珠子 {{ round.beads }}{{ round.isFinal ? ' End' : '' }} ===
+                ol.small
+                  li(v-for="entry in round.distribution" :key="entry.name + entry.note")
+                    | {{ entry.name }} {{ entry.note }}
+
+        // 6. 總珠子數
+        .col-lg-2.col-md-6.col-12(v-if="currentRoomId")
+          .card.h-100
+            .card-header.bg-success.text-white.text-center
+              h5.mb-0 總珠子數
+            .card-body
+              p.fw-bold 總珠子數：{{ totalBeads }}
+              p.fw-bold(v-if="randomBeads > 0") 隨機：{{ randomBeads }}
+              
+              h6.mt-3 隊伍成員
+              ul.list-unstyled.small
+                li(v-for="p in team" :key="p.name")
+                  | {{ p.name }} {{ p.beads }} 組
+              
+              h6.mt-3(v-if="sales.length > 0") 販賣紀錄
+              ul.list-unstyled.small(v-if="sales.length > 0")
+                li(v-for="s in sales" :key="s.from + s.to")
+                  | {{ s.from }} → {{ s.to }} {{ s.count }} 組
+
+  script(src="https://unpkg.com/vue@3/dist/vue.global.js")
+  script.
+    const { createApp, ref, computed } = Vue;
+    
+    createApp({
+      setup() {
+        // WebSocket 和房間管理
+        const ws = ref(null);
+        const currentRoomId = ref('');
+        const joinRoomId = ref('');
+        const isCaptain = ref(false);
+        const onlineUsers = ref(0);
+        const statusMessage = ref('');
+        const statusType = ref('info');
+
+        const availablePlayers = ref([
+          { name: '86' },
+          { name: '方哥' },
+          { name: '尹月' },
+          { name: '冰龍' },
+          { name: '爆肝' },
+          { name: '小不點寶寶' },
+          { name: '大D' },
+          { name: '小艾' },
+        ]);
+
+        const team = ref([]);
+        const newPlayer = ref('');
+        const roundBeads = ref(0);
+        const rounds = ref([]);
+        const history = ref([]);
+        const salesConfig = ref([]);
+        const sales = ref([]);
+        const salesHistory = ref([]);
+        const lastIndex = ref(0);
+        const lastIndexHistory = ref([]);
+        const randomBeads = ref(0);
+        
+        const totalBeads = computed(() => team.value.reduce((sum, p) => sum + (p.beads || 0), 0));
+        const hasFinalRound = computed(() => rounds.value.some(r => r.isFinal));
+        const reversedRounds = computed(() => [...rounds.value].reverse());
+
+        // WebSocket 初始化
+        function initWebSocket() {
+          return new Promise((resolve, reject) => {
+            ws.value = new WebSocket('ws://localhost:3000');
+            
+            ws.value.onopen = function() {
+              console.log('WebSocket 連接已建立');
+              resolve(ws.value);
+            };
+            
+            ws.value.onmessage = function(event) {
+              const data = JSON.parse(event.data);
+              handleWebSocketMessage(data);
+            };
+            
+            ws.value.onclose = function() {
+              console.log('WebSocket 連接已關閉');
+              showStatus('連接已斷開', 'danger');
+              currentRoomId.value = '';
+            };
+            
+            ws.value.onerror = function(error) {
+              console.error('WebSocket 錯誤:', error);
+              showStatus('無法連接到伺服器', 'danger');
+              reject(error);
+            };
+          });
+        }
+
+        // 處理 WebSocket 訊息
+        function handleWebSocketMessage(data) {
+          switch(data.type) {
+            case 'beads_room_created':
+              currentRoomId.value = data.roomId;
+              isCaptain.value = data.isCaptain;
+              onlineUsers.value = 1;
+              showStatus(`房間已創建，序號: ${data.roomId}`, 'success');
+              break;
+              
+            case 'beads_room_joined':
+              currentRoomId.value = data.roomId;
+              isCaptain.value = data.isCaptain;
+              loadGameState(data.gameState);
+              showStatus(`已加入房間: ${data.roomId}`, 'success');
+              break;
+              
+            case 'game_state_updated':
+              loadGameState(data.gameState);
+              break;
+              
+            case 'user_joined_beads':
+              onlineUsers.value++;
+              showStatus(data.message, 'info');
+              break;
+              
+            case 'user_left_beads':
+              onlineUsers.value--;
+              showStatus(data.message, 'warning');
+              break;
+              
+            case 'promoted_to_captain':
+              isCaptain.value = true;
+              showStatus(data.message, 'success');
+              break;
+              
+            case 'error':
+              showStatus(data.message, 'danger');
+              break;
+          }
+        }
+
+        // 載入遊戲狀態
+        function loadGameState(gameState) {
+          team.value = gameState.team || [];
+          rounds.value = gameState.rounds || [];
+          sales.value = gameState.sales || [];
+          salesConfig.value = gameState.salesConfig || [];
+          randomBeads.value = gameState.randomBeads || 0;
+          lastIndex.value = gameState.lastIndex || 0;
+        }
+
+        // 同步遊戲狀態
+        function syncGameState() {
+          if (ws.value && ws.value.readyState === WebSocket.OPEN && isCaptain.value) {
+            ws.value.send(JSON.stringify({
+              type: 'update_game_state',
+              gameState: {
+                team: team.value,
+                rounds: rounds.value,
+                sales: sales.value,
+                salesConfig: salesConfig.value,
+                randomBeads: randomBeads.value,
+                lastIndex: lastIndex.value
+              }
+            }));
+          }
+        }
+
+        // 顯示狀態訊息
+        function showStatus(message, type) {
+          statusMessage.value = message;
+          statusType.value = type;
+          setTimeout(() => {
+            statusMessage.value = '';
+          }, 3000);
+        }
+
+        // 房間管理功能
+        async function createRoom() {
+          try {
+            if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+              await initWebSocket();
+            }
+            ws.value.send(JSON.stringify({ type: 'create_beads_room' }));
+          } catch (error) {
+            console.error('創建房間失敗:', error);
+            showStatus('創建房間失敗', 'danger');
+          }
+        }
+
+        async function joinRoom() {
+          const roomId = joinRoomId.value.trim().toUpperCase();
+          if (roomId) {
+            try {
+              if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+                await initWebSocket();
+              }
+              ws.value.send(JSON.stringify({ type: 'join_beads_room', roomId: roomId }));
+            } catch (error) {
+              console.error('加入房間失敗:', error);
+              showStatus('加入房間失敗', 'danger');
+            }
+          } else {
+            showStatus('請輸入房間序號', 'warning');
+          }
+        }
+
+        function leaveRoom() {
+          if (ws.value) {
+            ws.value.close();
+          }
+          currentRoomId.value = '';
+          isCaptain.value = false;
+          onlineUsers.value = 0;
+          // 重置遊戲狀態
+          team.value = [];
+          rounds.value = [];
+          sales.value = [];
+          salesConfig.value = [];
+          randomBeads.value = 0;
+          lastIndex.value = 0;
+          showStatus('已離開房間', 'info');
+        }
+
+        function copyRoomId() {
+          navigator.clipboard.writeText(currentRoomId.value).then(() => {
+            // 使用瀏覽器原生 notification
+            if ('Notification' in window) {
+              // 檢查通知權限
+              if (Notification.permission === 'granted') {
+                new Notification('珠子分配系統', {
+                  body: `房間序號 ${currentRoomId.value} 已複製到剪貼板`,
+                  icon: '/favicon.ico', // 可以使用你的 icon
+                  tag: 'copy-room-id'
+                });
+              } else if (Notification.permission !== 'denied') {
+                // 請求通知權限
+                Notification.requestPermission().then(permission => {
+                  if (permission === 'granted') {
+                    new Notification('珠子分配系統', {
+                      body: `房間序號 ${currentRoomId.value} 已複製到剪貼板`,
+                      icon: '/favicon.ico',
+                      tag: 'copy-room-id'
+                    });
+                  } else {
+                    // 如果用戶拒絕通知權限，回退到原來的方式
+                    showStatus('房間序號已複製到剪貼板', 'success');
+                  }
+                });
+              } else {
+                // 用戶已拒絕通知權限，使用原來的方式
+                showStatus('房間序號已複製到剪貼板', 'success');
+              }
+            } else {
+              // 瀏覽器不支援通知，使用原來的方式
+              showStatus('房間序號已複製到剪貼板', 'success');
+            }
+          }).catch(err => {
+            console.error('複製失敗:', err);
+            showStatus('複製失敗，請手動複製房間序號', 'danger');
+          });
+        }
+
+        function addToTeam(name) {
+          if (!isCaptain.value) return;
+          if (!name) return;
+          if (team.value.length >= 8) return alert('隊伍最多 8 人');
+          if (team.value.find(p => p.name === name)) return;
+          team.value.push({ name, beads: 0 });
+          newPlayer.value = '';
+          syncGameState();
+        }
+
+        function removeFromTeam(name) {
+          if (!isCaptain.value) return;
+          const idx = team.value.findIndex(p => p.name === name);
+          if (idx !== -1) team.value.splice(idx, 1);
+          syncGameState();
+        }
+
+        function addSale() {
+          if (!isCaptain.value) return;
+          salesConfig.value.push({ from: '', to: '' });
+          syncGameState();
+        }
+
+        function removeSale(index) {
+          if (!isCaptain.value) return;
+          salesConfig.value.splice(index, 1);
+          syncGameState();
+        }
+
+        function isSellerUsed(name, currentIndex) {
+          return salesConfig.value.some((sale, idx) => idx !== currentIndex && sale.from === name);
+        }
+
+        function distributeRound(beadCount, isFinal = false) {
+          const n = team.value.length;
+          if (!beadCount || n === 0) return;
+          team.value.forEach(p => {
+            if (p.beads === undefined) p.beads = 0;
+          });
+
+          const result = [];
+          let remaining = beadCount;
+          let idx = rounds.value.length === 0 ? 0 : (lastIndex.value + 1) % n;
+          const baseOrder = [];
+
+          for (let i = 0; i < n; i++) baseOrder.push(team.value[(idx + i) % n]);
+
+          history.value.push(JSON.parse(JSON.stringify(team.value)));
+          salesHistory.value.push(JSON.parse(JSON.stringify(sales.value)));
+          lastIndexHistory.value.push(lastIndex.value);
+
+          if (isFinal) {
+            const peopleUntilFirstPerson = idx === 0 ? n : n - idx;
+
+            if (beadCount <= peopleUntilFirstPerson) {
+              if (beadCount < peopleUntilFirstPerson) {
+                const whoWillBeInThisRound = [];
+                for (let i = 0; i < peopleUntilFirstPerson; i++) {
+                  whoWillBeInThisRound.push(baseOrder[i].name);
+                }
+
+                for (let i = 0; i < beadCount; i++) {
+                  result.push({ name: whoWillBeInThisRound.join(' '), note: '搶' });
+                }
+                randomBeads.value = beadCount;
+              } else {
+                for (let i = 0; i < beadCount; i++) {
+                  const player = baseOrder[i];
+                  const sale = salesConfig.value.find(s => s.from === player.name);
+                  if (sale && sale.to) {
+                    const buyer = team.value.find(p => p.name === sale.to);
+                    if (buyer) {
+                      buyer.beads++;
+                      let s = sales.value.find(
+                        x => x.from === player.name && x.to === buyer.name,
+                      );
+                      if (!s)
+                        sales.value.push({
+                          from: player.name,
+                          to: buyer.name,
+                          count: 1,
+                        });
+                      else s.count++;
+                      result.push({ name: buyer.name, note: `${player.name}賣` });
+                    }
+                  } else {
+                    player.beads++;
+                    result.push({ name: player.name, note: '' });
+                  }
+                }
+              }
+            } else {
+              for (let i = 0; i < peopleUntilFirstPerson; i++) {
+                const player = baseOrder[i];
+                const sale = salesConfig.value.find(s => s.from === player.name);
+                if (sale && sale.to) {
+                  const buyer = team.value.find(p => p.name === sale.to);
+                  if (buyer) {
+                    buyer.beads++;
+                    let s = sales.value.find(x => x.from === player.name && x.to === buyer.name);
+                    if (!s)
+                      sales.value.push({
+                        from: player.name,
+                        to: buyer.name,
+                        count: 1,
+                      });
+                    else s.count++;
+                    result.push({ name: buyer.name, note: `${player.name}賣` });
+                  }
+                } else {
+                  player.beads++;
+                  result.push({ name: player.name, note: '' });
+                }
+              }
+
+              const remainingBeads = beadCount - peopleUntilFirstPerson;
+              const allNames = team.value.map(p => p.name).join(' ');
+              for (let i = 0; i < remainingBeads; i++) {
+                result.push({ name: allNames, note: '搶' });
+              }
+              randomBeads.value = remainingBeads;
+            }
+
+            lastIndex.value = 0;
+          } else {
+            while (remaining > 0) {
+              const player = baseOrder[0];
+              baseOrder.push(baseOrder.shift());
+              remaining--;
+
+              const sale = salesConfig.value.find(s => s.from === player.name);
+              if (sale && sale.to) {
+                const buyer = team.value.find(p => p.name === sale.to);
+                if (buyer) {
+                  buyer.beads++;
+                  let s = sales.value.find(x => x.from === player.name && x.to === buyer.name);
+                  if (!s) sales.value.push({ from: player.name, to: buyer.name, count: 1 });
+                  else s.count++;
+                  result.push({ name: buyer.name, note: `${player.name}賣` });
+                } else {
+                  player.beads++;
+                  result.push({ name: player.name, note: '' });
+                }
+              } else {
+                player.beads++;
+                result.push({ name: player.name, note: '' });
+              }
+            }
+            lastIndex.value = (idx + beadCount - 1) % n;
+          }
+
+          rounds.value.push({ beads: beadCount, distribution: result, isFinal });
+          roundBeads.value = 0;
+        }
+
+        function distributeBeads() {
+          if (!isCaptain.value) return;
+          distributeRound(roundBeads.value);
+          syncGameState();
+        }
+
+        function finalDistribute() {
+          if (!isCaptain.value) return;
+          distributeRound(roundBeads.value, true);
+          syncGameState();
+        }
+
+        function undoLastRound() {
+          if (!isCaptain.value) return;
+          if (rounds.value.length === 0) return;
+          const lastRound = rounds.value[rounds.value.length - 1];
+
+          if (history.value.length === 0) return;
+          const lastState = history.value.pop();
+          const lastSalesState = salesHistory.value.pop();
+          const lastIndexState = lastIndexHistory.value.pop();
+
+          team.value = lastState.map(p => ({ ...p }));
+          sales.value = lastSalesState.map(s => ({ ...s }));
+          lastIndex.value = lastIndexState;
+          rounds.value.pop();
+
+          if (lastRound.isFinal) {
+            randomBeads.value = 0;
+          }
+          syncGameState();
+        }
+
+        function downloadReport() {
+          let content = '='.repeat(50) + '\n';
+          content += '珠子分配紀錄\n';
+          content += '='.repeat(50) + '\n\n';
+
+          // 回合紀錄
+          content += '【回合紀錄】\n\n';
+          rounds.value.forEach((round, i) => {
+            content += `=== 回合 ${i + 1} 珠子 ${round.beads}${round.isFinal ? ' End' : ''} ===\n`;
+            round.distribution.forEach((entry, idx) => {
+              content += `${idx + 1}. ${entry.name} ${entry.note}\n`;
+            });
+            content += '\n';
+          });
+
+          // 總珠子數
+          content += '='.repeat(50) + '\n';
+          content += '【總珠子數】\n\n';
+          content += `總珠子數：${totalBeads.value}\n`;
+          if (randomBeads.value > 0) {
+            content += `隨機：${randomBeads.value}\n`;
+          }
+          content += '\n';
+          team.value.forEach(p => {
+            content += `${p.name} ${p.beads} 組\n`;
+          });
+
+          // 販賣紀錄
+          if (sales.value.length > 0) {
+            content += '\n' + '='.repeat(50) + '\n';
+            content += '【販賣紀錄】\n\n';
+            sales.value.forEach(s => {
+              content += `${s.from} → ${s.to} ${s.count} 組\n`;
+            });
+          }
+
+          content += '\n' + '='.repeat(50) + '\n';
+          content += `生成時間：${new Date().toLocaleString('zh-TW')}\n`;
+
+          // 創建下載
+          const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `珠子分配紀錄_${new Date().getTime()}.txt`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+
+        return {
+          // WebSocket 和房間管理
+          currentRoomId,
+          joinRoomId,
+          isCaptain,
+          onlineUsers,
+          statusMessage,
+          statusType,
+          createRoom,
+          joinRoom,
+          leaveRoom,
+          copyRoomId,
+          
+          // 遊戲數據
+          availablePlayers,
+          team,
+          newPlayer,
+          roundBeads,
+          rounds,
+          salesConfig,
+          sales,
+          randomBeads,
+          totalBeads,
+          hasFinalRound,
+          reversedRounds,
+          
+          // 遊戲操作
+          addToTeam,
+          removeFromTeam,
+          addSale,
+          removeSale,
+          isSellerUsed,
+          distributeBeads,
+          finalDistribute,
+          undoLastRound,
+          downloadReport
+        };
+      }
+    }).mount('#app');

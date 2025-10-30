@@ -1,0 +1,30 @@
+{
+	"name": "express",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"start": "node ./bin/www"
+	},
+	"dependencies": {
+		"bcrypt": "^6.0.0",
+		"cookie-parser": "~1.4.4",
+		"cors": "^2.8.5",
+		"crypto": "^1.0.1",
+		"debug": "~2.6.9",
+		"dotenv": "^17.2.1",
+		"express": "~4.16.1",
+		"http-errors": "~1.6.3",
+		"jade": "~1.11.0",
+		"jsonwebtoken": "^9.0.2",
+		"morgan": "~1.9.1",
+		"ms": "^2.1.3",
+		"mysql2": "^3.14.3",
+		"pug": "^3.0.3",
+		"puppeteer": "^24.20.0",
+		"sequelize": "^6.37.7",
+		"ws": "^8.18.3"
+	},
+	"devDependencies": {
+		"sequelize-cli": "^6.6.3"
+	}
+}

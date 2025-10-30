@@ -1,0 +1,13 @@
+extends layout
+
+block content
+  .container.mt-5
+    .row.justify-content-center
+      .col-md-8
+        .jumbotron.bg-primary.text-white.text-center.p-5.rounded
+          h1.display-4= title
+          p.lead Welcome to #{title}
+          hr.my-4
+          p 這是一個 Express 應用程式
+          .mt-4
+            a.btn.btn-light.btn-lg(href='/beads') 進入珠子分配系統

@@ -1,0 +1,16 @@
+extends layout
+
+block content
+  .container.mt-5
+    .row.justify-content-center
+      .col-md-8
+        .card
+          .card-header.bg-danger.text-white
+            h3.mb-0 錯誤
+          .card-body
+            h1= message
+            h2= error.status
+            if error.stack
+              pre.mt-3= error.stack
+            .mt-3
+              a.btn.btn-primary(href='/') 返回首頁
