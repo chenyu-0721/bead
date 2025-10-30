@@ -270,6 +270,9 @@ block content
         const toasts = ref([]);
         const showMembersDrawer = ref(false);
         let toastId = 0;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        let reconnectTimeout = null;
 
         const availablePlayers = ref([
           { name: '86' },
@@ -301,7 +304,13 @@ block content
         // WebSocket 初始化
         function initWebSocket() {
           return new Promise((resolve, reject) => {
-            ws.value = new WebSocket('ws://localhost:3000');
+            // 動態生成 WebSocket URL
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            const wsUrl = `${protocol}//${host}`;
+            
+            console.log('連接 WebSocket:', wsUrl);
+            ws.value = new WebSocket(wsUrl);
             
             ws.value.onopen = function() {
               console.log('WebSocket 連接已建立');
@@ -313,10 +322,42 @@ block content
               handleWebSocketMessage(data);
             };
             
-            ws.value.onclose = function() {
-              console.log('WebSocket 連接已關閉');
-              showStatus('連接已斷開', 'danger');
-              currentRoomId.value = '';
+            ws.value.onclose = function(event) {
+              console.log('WebSocket 連接已關閉', event);
+              
+              // 如果是正常關閉或者已經達到最大重試次數，不重連
+              if (event.wasClean || reconnectAttempts >= maxReconnectAttempts) {
+                showStatus('連接已斷開', 'danger');
+                currentRoomId.value = '';
+                reconnectAttempts = 0;
+                return;
+              }
+              
+              // 嘗試重新連接
+              reconnectAttempts++;
+              const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // 指數退避，最大30秒
+              
+              showNotification(`連接斷開，${delay/1000}秒後重試 (${reconnectAttempts}/${maxReconnectAttempts})`, 'warning');
+              
+              reconnectTimeout = setTimeout(() => {
+                if (currentRoomId.value) {
+                  console.log(`嘗試重新連接 (${reconnectAttempts}/${maxReconnectAttempts})`);
+                  initWebSocket().then(() => {
+                    // 重連成功後重新加入房間
+                    if (currentRoomId.value) {
+                      const message = {
+                        type: 'join_beads_room',
+                        roomId: currentRoomId.value,
+                        playerName: playerName.value
+                      };
+                      ws.value.send(JSON.stringify(message));
+                    }
+                    reconnectAttempts = 0; // 重置重試計數
+                  }).catch(error => {
+                    console.error('重連失敗:', error);
+                  });
+                }
+              }, delay);
             };
             
             ws.value.onerror = function(error) {
@@ -550,8 +591,15 @@ block content
         }
 
         function leaveRoom() {
+          // 清理重連定時器
+          if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+          }
+          reconnectAttempts = 0;
+          
           if (ws.value) {
-            ws.value.close();
+            ws.value.close(1000, '用戶主動離開'); // 正常關閉
           }
           currentRoomId.value = '';
           isCaptain.value = false;
