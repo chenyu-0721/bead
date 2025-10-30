@@ -140,12 +140,15 @@ block content
               small.d-block(v-if="!isCaptain") (僅隊長可操作)
             .card-body.d-flex.flex-column
               .mb-2(v-for="p in availablePlayers" :key="p.name")
-                button.btn.btn-outline-secondary.btn-sm.w-100(:disabled="!isCaptain" @click="addToTeam(p.name)")
+                button.btn.btn-outline-secondary.btn-sm.w-100(:disabled="!isCaptain || isTeamLocked" @click="addToTeam(p.name)")
                   | {{ p.name }}
               .mt-auto
                 .input-group.input-group-sm.mb-2
-                  input.form-control(v-model="newPlayer" type="text" placeholder="手動加入隊伍" :disabled="!isCaptain")
-                button.btn.btn-success.btn-sm.w-100(:disabled="!isCaptain" @click="addToTeam(newPlayer)") 加入隊伍
+                  input.form-control(v-model="newPlayer" type="text" placeholder="手動加入隊伍" :disabled="!isCaptain || isTeamLocked")
+                button.btn.btn-success.btn-sm.w-100(:disabled="!isCaptain || isTeamLocked" @click="addToTeam(newPlayer)") 加入隊伍
+                .alert.alert-warning.small.mt-2(v-if="isTeamLocked && isCaptain")
+                  i.fas.fa-lock.me-1
+                  | 隊伍已鎖定，請先返回上一步才能修改
 
         // 2. 隊伍欄位
         .col-lg-2.col-md-3.col-sm-6(v-if="currentRoomId")
@@ -157,8 +160,11 @@ block content
               .mb-2(v-for="p in team" :key="p.name")
                 .d-flex.justify-content-between.align-items-center.p-2.bg-light.rounded
                   span {{ p.name }}
-                  button.btn.btn-danger.btn-sm(:disabled="!isCaptain" @click="removeFromTeam(p.name)") ×
+                  button.btn.btn-danger.btn-sm(:disabled="!isCaptain || isTeamLocked" @click="removeFromTeam(p.name)") ×
               p.text-muted.text-center.small(v-if="team.length === 0") 點擊左側人員加入隊伍或手動輸入
+              .alert.alert-warning.small.mt-2(v-if="isTeamLocked && isCaptain")
+                i.fas.fa-lock.me-1
+                | 隊伍已鎖定，請先返回上一步才能修改
 
         // 3. 販賣設定
         .col-lg-2.col-md-3.col-sm-6(v-if="currentRoomId")
@@ -187,9 +193,15 @@ block content
               small.d-block(v-if="!isCaptain") (僅隊長可操作)
             .card-body.d-flex.flex-column
               input.form-control.form-control-sm.mb-2(v-model.number="roundBeads" type="number" placeholder="輸入珠子數量" :disabled="!isCaptain")
-              button.btn.btn-primary.btn-sm.w-100.mb-2(:disabled="!isCaptain" @click="distributeBeads") 分配珠子
+              button.btn.btn-primary.btn-sm.w-100.mb-2(:disabled="!isCaptain || isDistributeLocked" @click="distributeBeads") 分配珠子
               button.btn.btn-warning.btn-sm.w-100.mb-2(:disabled="!isCaptain" @click="finalDistribute") 最後一回合
               button.btn.btn-secondary.btn-sm.w-100.mb-2(:disabled="!isCaptain" @click="undoLastRound") 返回上一步
+              button.btn.btn-danger.btn-sm.w-100.mb-2(:disabled="!isCaptain" @click="resetAllData")
+                i.fas.fa-trash.me-1
+                | 重置全部
+              .alert.alert-info.small.mt-2(v-if="isDistributeLocked && isCaptain")
+                i.fas.fa-lock.me-1
+                | 已執行最後一回合，請先返回上一步才能繼續分配
               button.btn.btn-success.btn-sm.w-100.mt-auto(v-if="hasFinalRound" @click="downloadReport")
                 i.fas.fa-download.me-1
                 | 下載紀錄
@@ -296,6 +308,10 @@ block content
         const lastIndex = ref(0);
         const lastIndexHistory = ref([]);
         const randomBeads = ref(0);
+        
+        // 按鈕鎖定狀態
+        const isTeamLocked = ref(false);
+        const isDistributeLocked = ref(false);
         
         const totalBeads = computed(() => team.value.reduce((sum, p) => sum + (p.beads || 0), 0));
         const hasFinalRound = computed(() => rounds.value.some(r => r.isFinal));
@@ -421,6 +437,8 @@ block content
           salesConfig.value = gameState.salesConfig || [];
           randomBeads.value = gameState.randomBeads || 0;
           lastIndex.value = gameState.lastIndex || 0;
+          isTeamLocked.value = gameState.isTeamLocked || false;
+          isDistributeLocked.value = gameState.isDistributeLocked || false;
         }
 
         // 同步遊戲狀態
@@ -434,7 +452,9 @@ block content
                 sales: sales.value,
                 salesConfig: salesConfig.value,
                 randomBeads: randomBeads.value,
-                lastIndex: lastIndex.value
+                lastIndex: lastIndex.value,
+                isTeamLocked: isTeamLocked.value,
+                isDistributeLocked: isDistributeLocked.value
               }
             }));
           }
@@ -611,6 +631,8 @@ block content
           salesConfig.value = [];
           randomBeads.value = 0;
           lastIndex.value = 0;
+          isTeamLocked.value = false;
+          isDistributeLocked.value = false;
           showStatus('已離開房間', 'info');
         }
 
@@ -786,12 +808,15 @@ block content
         function distributeBeads() {
           if (!isCaptain.value) return;
           distributeRound(roundBeads.value);
+          isTeamLocked.value = true; // 鎖定隊伍
           syncGameState();
         }
 
         function finalDistribute() {
           if (!isCaptain.value) return;
           distributeRound(roundBeads.value, true);
+          isTeamLocked.value = true; // 鎖定隊伍
+          isDistributeLocked.value = true; // 鎖定分配珠子按鈕
           syncGameState();
         }
 
@@ -812,8 +837,42 @@ block content
 
           if (lastRound.isFinal) {
             randomBeads.value = 0;
+            isDistributeLocked.value = false; // 解鎖分配珠子按鈕
           }
+          
+          // 如果沒有回合了，解鎖隊伍
+          if (rounds.value.length === 0) {
+            isTeamLocked.value = false;
+          }
+          
           syncGameState();
+        }
+
+        function resetAllData() {
+          if (!isCaptain.value) return;
+          
+          if (confirm('確定要重置全部資料嗎？此操作無法復原！')) {
+            // 重置所有遊戲資料
+            team.value.forEach(p => {
+              p.beads = 0;
+            });
+            rounds.value = [];
+            sales.value = [];
+            salesConfig.value = [];
+            history.value = [];
+            salesHistory.value = [];
+            lastIndexHistory.value = [];
+            randomBeads.value = 0;
+            lastIndex.value = 0;
+            roundBeads.value = 0;
+            
+            // 解鎖所有按鈕
+            isTeamLocked.value = false;
+            isDistributeLocked.value = false;
+            
+            showNotification('已重置全部資料', 'success', true);
+            syncGameState();
+          }
         }
 
         function downloadReport() {
@@ -903,6 +962,8 @@ block content
           totalBeads,
           hasFinalRound,
           reversedRounds,
+          isTeamLocked,
+          isDistributeLocked,
           
           // 遊戲操作
           addToTeam,
@@ -913,6 +974,7 @@ block content
           distributeBeads,
           finalDistribute,
           undoLastRound,
+          resetAllData,
           downloadReport
         };
       }
